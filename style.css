@@ -39,3 +39,6 @@ input { font: inherit; width: 100%; padding: 12px 14px; border-radius: 14px; bor
 .card small { color: var(--muted); display: block; }
 dialog { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 20px; max-width: 380px; width: calc(100% - 32px); }
 dialog::backdrop { background: rgba(0,0,0,.5); }
+
+.pills.wrap { flex-wrap: wrap; border-radius: 22px; max-width: 100%; }
+#workText { max-width: 320px; }

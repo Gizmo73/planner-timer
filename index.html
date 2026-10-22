@@ -42,6 +42,16 @@
         <button data-mode="JUST10" class="pill">Just 10</button>
       </div>
 
+      <div id="workPick" hidden>
+        <p class="muted small">What are you working on?</p>
+        <div class="pills wrap">
+          <button data-work="now" class="pill"></button>
+          <button data-work="other" class="pill">Something else</button>
+          <button data-work="none" class="pill">Nothing in particular</button>
+        </div>
+        <input id="workText" placeholder="e.g. Sort the garage" hidden>
+      </div>
+
       <div id="glassWrap" tabindex="0" role="button"
            aria-label="Hourglass. Press and hold to wind it up; the timer starts when you let go.">
         <svg id="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="track"/><circle id="arc" cx="50" cy="50" r="46" class="arc"/></svg>
@@ -76,7 +86,7 @@
   <dialog id="stopDlg">
     <form method="dialog">
       <h2>Stop here?</h2>
-      <p>Where did you get to? It becomes the task's next step on your phone.</p>
+      <p id="stopHelp">Where did you get to? It becomes the task's next step on your phone.</p>
       <input id="stopText" placeholder="e.g. Finish section 2 intro">
       <div class="row end">
         <button value="keep">Keep going</button>

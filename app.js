@@ -19,6 +19,8 @@ let fileId = null;
 let doc = null;      // the shared state
 let seen = 0;        // updatedAt of the newest state we have
 let pickedMode = "SESSION";
+let workOn = null;   // "now", "other" or "none": what a new session is for
+let workText = "";
 let busy = false;    // avoids two writes racing at the end of a session
 const hold = { pressing: false, full: false, p: 0, eased: 0, t0: 0, clicks: 0, hint: "" };
 let interruptionKind = "head";
@@ -140,12 +142,22 @@ const timer = () => doc?.timer || null;
 const running = (t) => t && (t.phase === "FOCUS" || t.phase === "BREAK");
 const remaining = (t) => (t.pausedRemaining >= 0 ? t.pausedRemaining : Math.max(0, t.endAt - Date.now()));
 
+// The Now task, unless you picked something else or nothing.
+function chosenWork() {
+  const choice = workOn || (doc.now ? "now" : "none");
+  if (choice === "now" && doc.now) return { task: doc.now, label: null };
+  const label = choice === "other" && workText.trim() ? workText.trim() : null;
+  return { task: { id: 0, title: label || "Focus session", next: null }, label };
+}
+
 function begin(phase, ms, extra = {}) {
   const now = Date.now();
   const t = timer();
-  const task = t ? doc.task : doc.now;
+  const work = t ? { task: doc.task, label: t.label || null } : chosenWork();
+  const task = work.task;
   doc.timer = {
     taskId: task ? task.id : 0,
+    label: work.label,
     mode: t ? t.mode : pickedMode,
     phase, total: ms, endAt: now + ms, pausedRemaining: -1, startedAt: now,
     longBreak: false, stoppedEarly: false, endedAt: 0,
@@ -361,8 +373,9 @@ function render() {
   if (!doc) return;
   const t = timer();
   const phase = t ? t.phase : "READY";
-  const task = t ? doc.task : doc.now;
+  const task = t ? (doc.task || { id: 0, title: t.label || "Focus session" }) : chosenWork().task;
   const mode = t ? t.mode : pickedMode;
+  renderWorkPick(!t);
   const st = settings();
   const n = doc.sessionsInSet || 0;
 
@@ -373,7 +386,7 @@ function render() {
     SUMMARY: "NICE WORK",
   }[phase];
   $("title").textContent = task ? task.title : "Focus session";
-  $("next").textContent = task && task.next ? `Next: ${task.next}` : task ? "" : "Put a task in Now on your phone to work on it here.";
+  $("next").textContent = task && task.next ? `Next: ${task.next}` : "";
   $("set").textContent = mode === "SESSION"
     ? `Session ${phase === "SUMMARY" ? ((Math.max(n, 1) - 1) % st.longEvery) + 1 : (n % st.longEvery) + 1} of ${st.longEvery} in this set`
     : "";
@@ -420,6 +433,7 @@ function render() {
     const mins = Math.max(1, Math.round(((t.stoppedEarly ? t.endedAt - t.startedAt : t.total)) / 60000));
     $("prompt").textContent = t.stoppedEarly ? `You focused for ${mins} min. Showing up counts.` : `You focused for ${mins} min. As planned.`;
     renderReview(t);
+    if (!t.taskId) renderCountDone(t);
     if (t.mode === "SESSION" && !t.stoppedEarly) {
       const long = longBreakDue();
       btn(long ? `Start the long break (${st.longBreakMin} min)` : `Start the break (${st.breakMin} min)`, () =>
@@ -464,6 +478,45 @@ function renderReview(t) {
   $("review").appendChild(box);
 }
 
+function renderWorkPick(visible) {
+  $("workPick").hidden = !visible;
+  if (!visible) return;
+  const choice = workOn || (doc.now ? "now" : "none");
+  for (const b of $("workPick").querySelectorAll("button")) {
+    if (b.dataset.work === "now") {
+      b.hidden = !doc.now;
+      b.textContent = doc.now ? doc.now.title : "";
+    }
+    b.classList.toggle("on", b.dataset.work === choice);
+  }
+  $("workText").hidden = choice !== "other";
+}
+
+// Work that wasn't on the list still counts: the phone logs it as a finished task.
+function renderCountDone(t) {
+  const box = document.createElement("div");
+  box.className = "card";
+  if (t.loggedDone) {
+    box.innerHTML = `<b style="color:var(--green)">✓ Counted as done today.</b>`;
+  } else {
+    box.innerHTML = `<b>Count it as done?</b><small>It wasn't on your list, but it still counts.</small>`;
+    const input = document.createElement("input");
+    input.placeholder = "What did you work on?";
+    input.value = t.label || "";
+    const add = document.createElement("button");
+    add.className = "primary";
+    add.textContent = "Add as done";
+    add.onclick = () => {
+      const sessions = t.mode === "SESSION" && !t.stoppedEarly ? 1 : 0;
+      doc.logDone = [...(doc.logDone || []).slice(-20), { title: input.value.trim() || "Focus session", at: Date.now(), sessions }];
+      t.loggedDone = true;
+      writeDoc();
+    };
+    box.append(input, add);
+  }
+  $("review").appendChild(box);
+}
+
 const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 // ---------- Dialogs ----------
@@ -493,6 +546,11 @@ function openInterruption() {
 function openStop() {
   const dlg = $("stopDlg");
   $("stopText").value = "";
+  const free = !timer()?.taskId;
+  $("stopText").hidden = free;
+  $("stopHelp").textContent = free
+    ? "Showing up counts. You can still count it as done on the next screen."
+    : "Where did you get to? It becomes the task's next step on your phone.";
   dlg.onclose = () => {
     if (dlg.returnValue === "stop") toSummary(true, $("stopText").value.trim() || null);
   };
@@ -512,6 +570,10 @@ glass.addEventListener("keydown", (e) => {
 glass.addEventListener("keyup", (e) => {
   if (e.key === " " || e.key === "Enter") pressEnd();
 });
+for (const b of $("workPick").querySelectorAll("button")) {
+  b.onclick = () => { workOn = b.dataset.work; render(); if (workOn === "other") $("workText").focus(); };
+}
+$("workText").addEventListener("input", (e) => { workText = e.target.value; $("title").textContent = workText.trim() || "Focus session"; });
 for (const b of $("modePick").querySelectorAll("button")) {
   b.onclick = () => { pickedMode = b.dataset.mode; render(); };
 }
