@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Planner timer</title>
+  <meta name="description" content="The Planner focus timer, mirrored from your phone.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <main id="app">
+    <header>
+      <span class="brand">⏳ Planner</span>
+      <span id="sync" class="muted"></span>
+    </header>
+
+    <section id="setup" hidden>
+      <h1>One-time setup</h1>
+      <p>Paste the <b>Web client ID</b> from Google Cloud (it ends in <code>.apps.googleusercontent.com</code>).</p>
+      <input id="clientId" placeholder="1234-abc.apps.googleusercontent.com">
+      <button id="saveClient" class="primary">Save</button>
+    </section>
+
+    <section id="signin" hidden>
+      <h1>See your timer here</h1>
+      <p>Sign in with the same Google account as the phone app. The timer stays in sync both ways.</p>
+      <button id="signinBtn" class="primary">Sign in with Google</button>
+    </section>
+
+    <section id="timer" hidden>
+      <p id="label" class="label"></p>
+      <h1 id="title"></h1>
+      <p id="next" class="muted"></p>
+      <p id="set" class="muted small"></p>
+
+      <div id="modePick" class="pills" hidden>
+        <button data-mode="SESSION" class="pill">Session</button>
+        <button data-mode="JUST10" class="pill">Just 10</button>
+      </div>
+
+      <div id="glassWrap" tabindex="0" role="button"
+           aria-label="Hourglass. Press and hold to wind it up; the timer starts when you let go.">
+        <svg id="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="track"/><circle id="arc" cx="50" cy="50" r="46" class="arc"/></svg>
+        <svg id="glass" viewBox="0 0 100 100"></svg>
+      </div>
+
+      <p id="clock" class="clock"></p>
+      <p id="prompt" class="prompt"></p>
+      <p id="hint" class="muted small"></p>
+
+      <div id="controls" class="row"></div>
+      <div id="review"></div>
+    </section>
+  </main>
+
+  <dialog id="interruptDlg">
+    <form method="dialog">
+      <h2>Interruption</h2>
+      <div class="pills">
+        <button type="button" data-kind="head" class="pill on">In my head</button>
+        <button type="button" data-kind="around" class="pill">Around me</button>
+      </div>
+      <input id="intText" placeholder="Optional, e.g. Remember to email Sam">
+      <p class="muted small">Anything you write can become a task when the session ends.</p>
+      <div class="row end">
+        <button value="cancel">Cancel</button>
+        <button value="save" class="primary">Back to work</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="stopDlg">
+    <form method="dialog">
+      <h2>Stop here?</h2>
+      <p>Where did you get to? It becomes the task's next step on your phone.</p>
+      <input id="stopText" placeholder="e.g. Finish section 2 intro">
+      <div class="row end">
+        <button value="keep">Keep going</button>
+        <button value="stop" class="primary">Stop</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
