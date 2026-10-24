@@ -126,6 +126,10 @@ async function pull() {
       return;
     }
     if (d.updatedAt > seen || !doc) {
+      // A session or break that ended elsewhere (say, on the phone) still rings here.
+      const before = doc?.timer;
+      const after = d.timer;
+      if (running(before) && after && after.startedAt === before.startedAt && after.phase !== before.phase) bell();
       doc = d;
       seen = d.updatedAt || 0;
       render();
@@ -310,6 +314,14 @@ function click(level) {
   o.start();
   o.stop(audio.currentTime + 0.03);
 }
+
+// Browsers only allow sound after you've interacted with the page, so get ready on the first click.
+function unlockAudio() {
+  if (!audio) { try { audio = new AudioContext(); } catch { audio = null; } }
+  audio?.resume?.();
+}
+document.addEventListener("pointerdown", unlockAudio);
+document.addEventListener("keydown", unlockAudio);
 
 function bell() {
   if (!audio) return;
