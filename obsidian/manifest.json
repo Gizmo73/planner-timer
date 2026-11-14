@@ -1,0 +1,9 @@
+{
+  "id": "planner-timer",
+  "name": "Planner timer",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "The Planner focus timer in a tab, kept in sync with the phone app through Google Drive.",
+  "author": "Gizmo73",
+  "isDesktopOnly": true
+}

@@ -12,4 +12,8 @@ Google client ID in `config.js` is public by design and only accepted from this
 site's address. Each person who signs in can only reach their own Drive and
 Tasks.
 
+In Obsidian, use the plugin in [`obsidian/`](obsidian/README.md): Google won't
+finish signing in inside Obsidian's Web Viewer, so the plugin signs in through
+your normal browser and shows this page in a tab.
+
 Every push to `main` publishes the page with GitHub Pages.
