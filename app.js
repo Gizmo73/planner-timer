@@ -42,7 +42,53 @@ const IN_APP = /\b(Electron|obsidian)\//i.test(navigator.userAgent);
 const AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const SCRIPT_WAIT_MS = 4000;
 
+// In the Obsidian plugin the page sits in a tab and the plugin signs in for it, because
+// Google refuses to finish signing in inside Obsidian. Tokens are only taken from Obsidian.
+const HOSTED = new URLSearchParams(location.search).get("host") === "obsidian" && window.parent !== window;
+const HOST_ORIGINS = ["app://obsidian.md"];
+
+function askHost(type) {
+  // Only asks; nothing secret goes this way.
+  window.parent.postMessage({ type }, "*");
+}
+
+function hostSignin(message, waiting) {
+  show("signin");
+  const btn = $("signinBtn");
+  $("signinMsg").textContent = message || "";
+  btn.disabled = !!waiting;
+  btn.textContent = waiting ? "Connecting…" : "Sign in with Google";
+  btn.onclick = () => {
+    btn.disabled = true;
+    btn.textContent = "Finish signing in in your browser…";
+    askHost("planner-signin");
+  };
+}
+
+window.addEventListener("message", (e) => {
+  if (!HOSTED || e.source !== window.parent) return;
+  const m = e.data || {};
+  if (!HOST_ORIGINS.includes(e.origin)) {
+    // Say so rather than wait forever, so a mismatch is easy to spot.
+    if (String(m.type).startsWith("planner-")) $("signinMsg").textContent = `Ignored sign-in from ${e.origin}.`;
+    return;
+  }
+  if (m.type === "planner-token" && m.token) {
+    token = m.token;
+    start();
+  } else if (m.type === "planner-need-signin") {
+    hostSignin("");
+  } else if (m.type === "planner-error") {
+    hostSignin(m.message);
+  }
+});
+
 function boot() {
+  if (HOSTED) {
+    hostSignin("", true);
+    askHost("planner-token-request");
+    return;
+  }
   if (!clientId()) {
     show("setup");
     $("saveClient").onclick = () => {
@@ -57,6 +103,9 @@ function boot() {
   const btn = $("signinBtn");
   const label = localStorage.getItem("signedIn") ? "Continue" : "Sign in with Google";
   const useRedirect = () => { btn.disabled = false; btn.textContent = label; btn.onclick = signInByRedirect; };
+  if (/\bobsidian\//i.test(navigator.userAgent)) {
+    $("signinMsg").textContent = "Google won't finish signing in inside Obsidian's Web Viewer. Use the Planner timer plugin instead.";
+  }
   if (IN_APP) return useRedirect();
 
   btn.disabled = true;
@@ -134,6 +183,12 @@ function signedOut() {
   if (!token) return;
   token = null;
   localStorage.removeItem("savedToken");
+  if (HOSTED) {
+    // The plugin keeps a long-lived sign-in, so it can usually hand over a new token at once.
+    hostSignin("", true);
+    askHost("planner-token-request");
+    return;
+  }
   boot();
 }
 
