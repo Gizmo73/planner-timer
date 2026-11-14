@@ -36,6 +36,12 @@ function show(section) {
   for (const id of ["setup", "signin", "timer"]) $(id).hidden = id !== section;
 }
 
+// Inside apps like Obsidian's Web Viewer, Google's sign-in script often doesn't load and
+// pop-ups can't report back, so there the page signs in by leaving for Google and coming back.
+const IN_APP = /\b(Electron|obsidian)\//i.test(navigator.userAgent);
+const AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
+const SCRIPT_WAIT_MS = 4000;
+
 function boot() {
   if (!clientId()) {
     show("setup");
@@ -45,8 +51,22 @@ function boot() {
     };
     return;
   }
+  if (takeRedirectToken() || loadSavedToken()) return start();
+
+  show("signin");
+  const btn = $("signinBtn");
+  const label = localStorage.getItem("signedIn") ? "Continue" : "Sign in with Google";
+  const useRedirect = () => { btn.disabled = false; btn.textContent = label; btn.onclick = signInByRedirect; };
+  if (IN_APP) return useRedirect();
+
+  btn.disabled = true;
+  btn.textContent = "Loading sign-in…";
+  const t0 = Date.now();
   const wait = () => {
-    if (!window.google?.accounts?.oauth2) return setTimeout(wait, 100);
+    if (!window.google?.accounts?.oauth2) {
+      // Blocked or offline: fall back rather than wait forever.
+      return Date.now() - t0 < SCRIPT_WAIT_MS ? setTimeout(wait, 100) : useRedirect();
+    }
     tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: clientId(),
       scope: SCOPES,
@@ -57,12 +77,64 @@ function boot() {
         start();
       },
     });
-    show("signin");
-    $("signinBtn").textContent = localStorage.getItem("signedIn") ? "Continue" : "Sign in with Google";
-    $("signinBtn").onclick = () =>
+    btn.disabled = false;
+    btn.textContent = label;
+    btn.onclick = () =>
       tokenClient.requestAccessToken({ prompt: localStorage.getItem("signedIn") ? "" : "consent" });
   };
   wait();
+}
+
+function redirectUri() {
+  return location.origin + location.pathname.replace(/index\.html$/, "");
+}
+
+function signInByRedirect() {
+  const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  localStorage.setItem("oauthState", state);
+  const p = new URLSearchParams({
+    client_id: clientId(),
+    redirect_uri: redirectUri(),
+    response_type: "token",
+    scope: SCOPES,
+    include_granted_scopes: "true",
+    state,
+  });
+  if (!localStorage.getItem("signedIn")) p.set("prompt", "consent");
+  location.assign(`${AUTH}?${p}`);
+}
+
+// Back from Google: the token arrives in the address after the #.
+function takeRedirectToken() {
+  if (!/[#&](access_token|error)=/.test(location.hash)) return false;
+  const h = new URLSearchParams(location.hash.slice(1));
+  history.replaceState(null, "", location.pathname + location.search);
+  const expected = localStorage.getItem("oauthState");
+  localStorage.removeItem("oauthState");
+  if (!expected || h.get("state") !== expected || !h.get("access_token")) return false;
+  token = h.get("access_token");
+  localStorage.setItem("signedIn", "1");
+  // Kept so reopening the tab within the hour doesn't mean another trip to Google.
+  const exp = Date.now() + (Number(h.get("expires_in")) || 3600) * 1000 - 60000;
+  localStorage.setItem("savedToken", JSON.stringify({ token, exp }));
+  return true;
+}
+
+function loadSavedToken() {
+  try {
+    const s = JSON.parse(localStorage.getItem("savedToken") || "null");
+    if (s?.token && s.exp > Date.now()) { token = s.token; return true; }
+  } catch {}
+  localStorage.removeItem("savedToken");
+  return false;
+}
+
+function signedOut() {
+  // Tokens last an hour; ask again.
+  if (!token) return;
+  token = null;
+  localStorage.removeItem("savedToken");
+  boot();
 }
 
 async function api(method, url, body, type) {
@@ -70,9 +142,7 @@ async function api(method, url, body, type) {
   if (type) headers["Content-Type"] = type;
   const res = await fetch(url, { method, headers, body });
   if (res.status === 401) {
-    // Tokens last an hour; ask again.
-    token = null;
-    show("signin");
+    signedOut();
     throw new Error("signed out");
   }
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
@@ -95,7 +165,7 @@ async function ensureFile() {
 async function readDoc() {
   const id = await ensureFile();
   const res = await fetch(`${DRIVE}/files/${id}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
-  if (res.status === 401) { token = null; show("signin"); return null; }
+  if (res.status === 401) { signedOut(); return null; }
   const text = res.ok ? await res.text() : "";
   try { return text ? JSON.parse(text) : null; } catch { return null; }
 }
@@ -109,8 +179,12 @@ async function writeDoc() {
   render();
 }
 
+let started = false;
+
 async function start() {
   show("timer");
+  if (started) return pull(); // signing in again: the loops below are already running
+  started = true;
   await pull();
   setInterval(pull, POLL_MS);
   setInterval(tick, 250);
